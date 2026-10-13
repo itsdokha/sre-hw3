@@ -1,0 +1,69 @@
+# Vector-агент: читает логи подов приложения с ноды и отправляет их в Victoria Logs.
+data_dir: /vector-data-dir
+
+sources:
+  k8s:
+    type: kubernetes_logs
+    # только поды нашего приложения (tasks-app, tasks-migrate, postgres)
+    extra_label_selector: app.kubernetes.io/part-of=tasks
+    # по умолчанию новые файлы ищутся раз в 60 с — новые поды появлялись бы с задержкой
+    glob_minimum_cooldown_ms: 5000
+
+transforms:
+  normalize:
+    type: remap
+    inputs: [k8s]
+    drop_on_abort: true
+    source: |
+      # пустые строки (postgres печатает их между блоками) не несут информации
+      if strip_whitespace(to_string(.message) ?? "") == "" {
+        abort
+      }
+      k8s = {
+        "k8s.namespace.name": .kubernetes.pod_namespace,
+        "k8s.pod.name": .kubernetes.pod_name,
+        "k8s.container.name": .kubernetes.container_name,
+        "k8s.node.name": .kubernetes.pod_node_name,
+        "log.iostream": .stream
+      }
+      app_label = .kubernetes.pod_labels.app
+      collected_at = .timestamp
+
+      parsed, err = parse_json(.message)
+      if err == null && is_object(parsed) {
+        # приложение уже пишет JSON (timestamp, level, message, service.name, ...)
+        . = object!(parsed)
+      } else {
+        # текстовые логи (postgres): уровень достаём из префикса строки
+        line = string!(.message)
+        level = "INFO"
+        if match(line, r'\b(ERROR|FATAL|PANIC):') {
+          level = "ERROR"
+        } else if match(line, r'\bWARNING:') {
+          level = "WARNING"
+        }
+        . = {"message": line, "level": level, "service.name": app_label}
+      }
+      if !exists(.timestamp) {
+        .timestamp = collected_at
+      }
+      if !exists(."service.name") {
+        ."service.name" = app_label
+      }
+      . = merge(., k8s)
+
+sinks:
+  victoria_logs:
+    type: elasticsearch
+    inputs: [normalize]
+    endpoints: ["http://victoria-logs.logging.svc.cluster.local:9428/insert/elasticsearch/"]
+    mode: bulk
+    api_version: v8
+    compression: gzip
+    healthcheck:
+      enabled: false
+    # как Victoria Logs раскладывает поля записи
+    query:
+      _msg_field: message
+      _time_field: timestamp
+      _stream_fields: service.name,k8s.namespace.name,k8s.pod.name,k8s.container.name

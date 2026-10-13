@@ -1,0 +1,8 @@
+# материалы курса
+task.md
+lecture.md
+sem.pdf
+__pycache__/
+*.pyc
+.env
+*.zip

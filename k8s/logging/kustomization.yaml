@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: logging
+resources:
+  - namespace.yaml
+  - victoria-logs.yaml
+  - vector-daemonset.yaml
+configMapGenerator:
+  # суффикс-хеш в имени: правка vector.yaml перезапускает DaemonSet
+  - name: vector-config
+    files:
+      - vector.yaml

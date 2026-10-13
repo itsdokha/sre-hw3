@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Список задач</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main class="page">
+    <h1>Список задач</h1>
+    <form id="task-form">
+      <label for="title">Название задачи</label>
+      <div class="form-row">
+        <input id="title" name="title" maxlength="200" required autocomplete="off">
+        <button id="submit-button" type="submit">Добавить</button>
+        <button id="cancel-button" type="button" hidden>Отмена</button>
+      </div>
+    </form>
+    <p id="message" role="status" aria-live="polite"></p>
+    <ul id="tasks" aria-label="Задачи"></ul>
+  </main>
+</body>
+</html>

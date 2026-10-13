@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tasks-migrate
+  labels:
+    app: tasks-migrate
+    app.kubernetes.io/part-of: tasks
+spec:
+  backoffLimit: 4
+  template:
+    metadata:
+      labels:
+        app: tasks-migrate
+        app.kubernetes.io/part-of: tasks
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16
+          command:
+            - sh
+            - -c
+            - until pg_isready -h "$PGHOST" -p "$PGPORT"; do echo waiting for postgres; sleep 2; done
+          envFrom:
+            - configMapRef:
+                name: tasks-config
+      containers:
+        - name: migrate
+          image: tasks-app:1.1
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "app.migrate"]
+          envFrom:
+            - configMapRef:
+                name: tasks-config
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: SERVICE_VERSION
+              value: "1.1"
+            - name: SERVICE_NAME
+              value: tasks-migrate

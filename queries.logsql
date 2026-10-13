@@ -1,0 +1,32 @@
+# (а) Сырые записи за последние 15 минут, свежие сверху
+_time:15m | sort by (_time) desc | limit 100
+
+# (б) Фильтр по полю: только ошибки, с ключевыми полями
+_time:1h level:ERROR
+  | fields _time, k8s.pod.name, request_id, http.status_code, error.type, _msg
+  | sort by (_time) desc
+
+# (в) stats с группировкой: число записей по сервису и уровню
+_time:1h | stats by (service.name, level) count() logs | sort by (logs desc)
+
+# (в') доля ошибок по эндпоинтам
+_time:1h logger:tasks.access
+  | stats by (http.route, http.method) count() requests, count() if (level:ERROR) errors
+  | math round(errors / requests * 100, 0.1) as error_pct
+  | sort by (requests desc)
+
+# (г) quantile: задержка эндпоинтов без проб kubelet
+_time:1h logger:tasks.access -user_agent:kube-probe*
+  | stats by (http.route, http.method)
+      count() requests,
+      quantile(0.5, duration_ms) p50_ms,
+      quantile(0.95, duration_ms) p95_ms,
+      max(duration_ms) max_ms
+  | sort by (p95_ms desc)
+
+# (г') top: самые частые клиенты (User-Agent)
+_time:1h logger:tasks.access | top 5 by (user_agent)
+
+# (г'') count_uniq: балансировка по подам
+_time:1h logger:tasks.access
+  | stats by (k8s.pod.name) count() requests, count_uniq(request_id) unique_requests, count_uniq(user_agent) agents
